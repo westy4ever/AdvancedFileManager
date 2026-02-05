@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-from Screens.Screen import Screen
 from Screens.MessageBox import MessageBox
 from Screens.ChoiceBox import ChoiceBox
 from Components.ActionMap import ActionMap, HelpableActionMap
 from Components.Label import Label
+from Components.Sources.StaticText import StaticText
 from Components.Pixmap import Pixmap
 from Components.Slider import Slider
 from Components.ServiceEventTracker import ServiceEventTracker
@@ -11,15 +11,30 @@ from Components.config import config
 from enigma import eTimer, eServiceReference, iPlayableService, iServiceInformation, getDesktop
 from ServiceReference import ServiceReference
 from Screens.InfoBarGenerics import InfoBarSeek, InfoBarAudioSelection, InfoBarSubtitleSupport, InfoBarNotifications
-from Screens.MoviePlayer import MoviePlayer
+
+# Try to import MoviePlayer
+try:
+    from Screens.MoviePlayer import MoviePlayer
+    HAS_MOVIEPLAYER = True
+except ImportError:
+    # Fallback for systems without MoviePlayer
+    from Screens.Screen import Screen
+    MoviePlayer = Screen
+    HAS_MOVIEPLAYER = False
+
 import os
 import json
 
 # Import our logger and subtitle manager
 from ..utils.logger import Logger
-from .subtitle_manager import SubtitleManager
 
-class AdvancedVideoPlayer(MoviePlayer):
+try:
+    from .subtitle_manager import SubtitleManager
+    HAS_SUBTITLE_MANAGER = True
+except ImportError:
+    HAS_SUBTITLE_MANAGER = False
+
+class AdvancedVideoPlayer(MoviePlayer if HAS_MOVIEPLAYER else Screen):
     """
     Enhanced video player with advanced subtitle controls and file manager integration
     """
@@ -27,7 +42,7 @@ class AdvancedVideoPlayer(MoviePlayer):
     skin = """
     <screen name="AdvancedVideoPlayer" position="0,0" size="1920,1080" title="Video Player" flags="wfNoBorder">
         <!-- Subtitle Display Area -->
-        <widget name="subtitle_label" position="200,900" size="1520,120" font="Regular;32" foregroundColor="#ffffff" 
+        <widget source="subtitle_label" render="Label" position="200,900" size="1520,120" font="Regular;32" foregroundColor="#ffffff" 
                 backgroundColor="#000000" transparent="1" halign="center" valign="center" zPosition="10" />
         
         <!-- OSD Control Bar -->
@@ -58,8 +73,11 @@ class AdvancedVideoPlayer(MoviePlayer):
     """
     
     def __init__(self, session, service, file_path=None, playlist=None, subtitles=None):
-        # Initialize parent MoviePlayer
-        MoviePlayer.__init__(self, session, service)
+        # Initialize parent MoviePlayer if available
+        if HAS_MOVIEPLAYER:
+            MoviePlayer.__init__(self, session, service)
+        else:
+            Screen.__init__(self, session)
         
         self.session = session
         self.service = service
@@ -69,7 +87,11 @@ class AdvancedVideoPlayer(MoviePlayer):
         self.logger = Logger("VideoPlayer")
         
         # Subtitle management
-        self.subtitle_manager = subtitles or SubtitleManager()
+        if HAS_SUBTITLE_MANAGER:
+            self.subtitle_manager = subtitles or SubtitleManager()
+        else:
+            self.subtitle_manager = None
+        
         self.subtitle_delay = 0
         self.subtitle_enabled = True
         self.external_subtitle_loaded = False
@@ -80,47 +102,36 @@ class AdvancedVideoPlayer(MoviePlayer):
         self.osd_hide_timer.callback.append(self.hide_osd)
         
         # UI Elements
-        self["subtitle_label"] = Label("")
-        self["progress"] = Slider(0, 100)
-        self["current_time"] = Label("0:00:00")
-        self["total_time"] = Label("0:00:00")
-        self["filename"] = Label(os.path.basename(self.current_file))
-        self["subtitle_status"] = Label("Subtitles: None")
-        self["controls"] = Label("")
+        self["subtitle_label"] = StaticText("")
+        self["progress"] = StaticText("0")
+        self["current_time"] = StaticText("0:00:00")
+        self["total_time"] = StaticText("0:00:00")
+        self["filename"] = StaticText(os.path.basename(self.current_file))
+        self["subtitle_status"] = StaticText("Subtitles: None")
+        self["controls"] = StaticText("")
         
         # Additional actions for file manager integration
-        self["filemanager_actions"] = HelpableActionMap(self, "AdvancedVideoPlayerActions",
-        {
-            "subtitle_delay_plus": (self.subtitle_delay_plus, _("Increase subtitle delay")),
-            "subtitle_delay_minus": (self.subtitle_delay_minus, _("Decrease subtitle delay")),
-            "subtitle_toggle": (self.toggle_subtitles, _("Toggle subtitles on/off")),
-            "subtitle_download": (self.download_subtitles, _("Download subtitles online")),
-            "subtitle_sync_reset": (self.reset_subtitle_delay, _("Reset subtitle synchronization")),
-            "show_playlist": (self.show_playlist, _("Show playlist")),
-            "next_file": (self.next_file, _("Next file")),
-            "prev_file": (self.prev_file, _("Previous file")),
-            "delete_file": (self.delete_current_file, _("Delete current file")),
-            "file_info": (self.show_file_info, _("Show file information")),
-            "toggle_osd": (self.toggle_osd, _("Toggle on-screen display")),
-        }, prio=-1)
-        
-        # Override some MoviePlayer actions
-        self["MoviePlayerActions"] = ActionMap(["MoviePlayerActions"],
+        self["filemanager_actions"] = ActionMap(["MoviePlayerActions", "DirectionActions"],
         {
             "leavePlayer": self.leavePlayer,
-            "movieMenu": self.show_video_menu,
-        }, prio=-2)
+            "channelUp": self.subtitle_delay_plus,
+            "channelDown": self.subtitle_delay_minus,
+            "up": self.next_file,
+            "down": self.prev_file,
+            "info": self.show_file_info,
+            "menu": self.show_video_menu,
+        }, prio=-1)
         
         # Event tracking
         self.__event_tracker = ServiceEventTracker(screen=self, eventmap={
             iPlayableService.evUpdatedInfo: self.__updatedInfo,
-            iPlayableService.evUpdatedEventInfo: self.__updatedEventInfo,
             iPlayableService.evStart: self.__serviceStarted,
             iPlayableService.evEOF: self.__serviceEnded,
         })
         
         # Initialize subtitle system
-        self.init_subtitles()
+        if self.subtitle_manager:
+            self.init_subtitles()
         
         # Start OSD hide timer
         self.osd_hide_timer.start(5000, True)
@@ -130,6 +141,9 @@ class AdvancedVideoPlayer(MoviePlayer):
     
     def init_subtitles(self):
         """Initialize subtitle system for current video"""
+        if not self.subtitle_manager:
+            return
+        
         # Try to load external subtitles
         if self.subtitle_manager.load_subtitle(self.current_file):
             self.external_subtitle_loaded = True
@@ -173,16 +187,11 @@ class AdvancedVideoPlayer(MoviePlayer):
         self["subtitle_status"].setText(f"Subtitle Delay: {self.subtitle_delay}ms")
         self.logger.info(f"Subtitle delay decreased to {self.subtitle_delay}ms")
     
-    def reset_subtitle_delay(self):
-        """Reset subtitle delay to 0"""
-        self.subtitle_delay = 0
-        self.apply_subtitle_delay()
-        self.show_osd()
-        self["subtitle_status"].setText("Subtitle Delay: Reset")
-        self.logger.info("Subtitle delay reset")
-    
     def apply_subtitle_delay(self):
         """Apply current subtitle delay to player"""
+        if not self.subtitle_manager:
+            return
+        
         self.subtitle_manager.delay = self.subtitle_delay
         
         # For embedded subtitles, use Enigma2's subtitle delay if available
@@ -190,87 +199,21 @@ class AdvancedVideoPlayer(MoviePlayer):
         if service:
             subtitle = service.subtitle()
             if subtitle and hasattr(subtitle, 'setSubtitleDelay'):
-                subtitle.setSubtitleDelay(self.subtitle_delay)
-    
-    def toggle_subtitles(self):
-        """Toggle subtitles on/off"""
-        self.subtitle_enabled = not self.subtitle_enabled
-        
-        service = self.session.nav.getCurrentService()
-        if service:
-            subtitle = service.subtitle()
-            if subtitle:
-                if self.subtitle_enabled:
-                    subtitle.enableSubtitles(True)
-                    self["subtitle_status"].setText("Subtitles: Enabled")
-                else:
-                    subtitle.enableSubtitles(False)
-                    self["subtitle_status"].setText("Subtitles: Disabled")
-        
-        self.show_osd()
-        self.logger.info(f"Subtitles {'enabled' if self.subtitle_enabled else 'disabled'}")
-    
-    def download_subtitles(self):
-        """Download subtitles from online sources"""
-        self.session.openWithCallback(
-            self.subtitle_download_callback,
-            MessageBox,
-            _("Search for subtitles online?\nThis requires internet connection."),
-            MessageBox.TYPE_YESNO
-        )
-    
-    def subtitle_download_callback(self, confirmed):
-        """Handle subtitle download confirmation"""
-        if confirmed:
-            # Show language selection
-            languages = [
-                ("eng", _("English")),
-                ("spa", _("Spanish")),
-                ("fre", _("French")),
-                ("ger", _("German")),
-                ("ita", _("Italian")),
-                ("por", _("Portuguese")),
-                ("rus", _("Russian")),
-                ("ara", _("Arabic")),
-            ]
-            
-            self.session.openWithCallback(
-                self.subtitle_language_selected,
-                ChoiceBox,
-                _("Select subtitle language"),
-                languages
-            )
-    
-    def subtitle_language_selected(self, selection):
-        """Handle language selection for subtitles"""
-        if selection:
-            lang_code = selection[0]
-            self.search_subtitles_online(lang_code)
-    
-    def search_subtitles_online(self, language):
-        """Search and download subtitles from online database"""
-        self.session.open(
-            MessageBox,
-            _("Searching for subtitles...\nLanguage: ") + language,
-            MessageBox.TYPE_INFO,
-            timeout=3
-        )
-        
-        self.logger.info(f"Subtitle search initiated for language: {language}")
+                try:
+                    subtitle.setSubtitleDelay(self.subtitle_delay)
+                except:
+                    pass
     
     def __updatedInfo(self):
         """Called when service info is updated"""
         self.update_progress()
         self.update_time_display()
     
-    def __updatedEventInfo(self):
-        """Called when event info is updated"""
-        pass
-    
     def __serviceStarted(self):
         """Called when playback starts"""
         self.logger.info(f"Playback started: {self.current_file}")
-        self.init_subtitles()
+        if self.subtitle_manager:
+            self.init_subtitles()
     
     def __serviceEnded(self):
         """Called when playback ends"""
@@ -278,6 +221,8 @@ class AdvancedVideoPlayer(MoviePlayer):
         # Auto-play next file if in playlist
         if self.playlist and self.current_index < len(self.playlist) - 1:
             self.next_file()
+        else:
+            self.close()
     
     def update_progress(self):
         """Update progress bar"""
@@ -288,13 +233,13 @@ class AdvancedVideoPlayer(MoviePlayer):
                 length = seek.getLength()
                 position = seek.getPlayPosition()
                 
-                if length[0] == 0 and position[0] == 0:
+                if length[0] == 0 and position[0] == 0 and length[1] > 0:
                     len_secs = length[1] // 90000
                     pos_secs = position[1] // 90000
                     
                     if len_secs > 0:
                         progress = int((pos_secs / len_secs) * 100)
-                        self["progress"].setValue(progress)
+                        self["progress"].setText(str(progress))
     
     def update_time_display(self):
         """Update time display labels"""
@@ -328,29 +273,15 @@ class AdvancedVideoPlayer(MoviePlayer):
         """Hide on-screen display"""
         self.is_osd_visible = False
     
-    def toggle_osd(self):
-        """Toggle OSD visibility"""
-        if self.is_osd_visible:
-            self.hide_osd()
-        else:
-            self.show_osd()
-    
     def update_control_hints(self):
         """Update control hints based on context"""
         hints = []
         
-        # Basic controls
-        hints.append("▶/❚❚: Play/Pause")
-        hints.append("◄/►: Seek")
+        hints.append("OK: Play/Pause")
+        hints.append("CH+/-: Sub delay")
         
-        # Subtitle controls
-        hints.append("CH+/CH-: Sub delay")
-        hints.append("TEXT: Download subs")
-        hints.append("HELP: Toggle subs")
-        
-        # Navigation
         if len(self.playlist) > 1:
-            hints.append("▲/▼: Prev/Next file")
+            hints.append("Up/Down: Prev/Next")
         
         hints.append("EXIT: Stop")
         
@@ -396,75 +327,10 @@ class AdvancedVideoPlayer(MoviePlayer):
         # Reset subtitle state
         self.subtitle_delay = 0
         self.external_subtitle_loaded = False
-        self.init_subtitles()
+        if self.subtitle_manager:
+            self.init_subtitles()
         
         self.logger.info(f"Playing next file: {next_file}")
-    
-    def show_playlist(self):
-        """Show playlist screen"""
-        if not self.playlist:
-            return
-        
-        playlist_items = []
-        for i, file_path in enumerate(self.playlist):
-            prefix = "▶ " if i == self.current_index else "  "
-            playlist_items.append((prefix + os.path.basename(file_path), file_path))
-        
-        self.session.openWithCallback(
-            self.playlist_selected,
-            ChoiceBox,
-            _("Playlist"),
-            playlist_items
-        )
-    
-    def playlist_selected(self, selection):
-        """Handle playlist selection"""
-        if selection:
-            file_path = selection[1]
-            if file_path in self.playlist:
-                index = self.playlist.index(file_path)
-                self.play_file_at_index(index)
-    
-    def delete_current_file(self):
-        """Delete current file with confirmation"""
-        self.session.openWithCallback(
-            self.confirm_delete,
-            MessageBox,
-            _("Delete this file permanently?\n") + os.path.basename(self.current_file),
-            MessageBox.TYPE_YESNO
-        )
-    
-    def confirm_delete(self, confirmed):
-        """Handle delete confirmation"""
-        if confirmed:
-            try:
-                # Stop playback
-                self.session.nav.stopService()
-                
-                # Delete file
-                os.remove(self.current_file)
-                
-                # Remove from playlist
-                if self.current_file in self.playlist:
-                    self.playlist.remove(self.current_file)
-                
-                self.logger.info(f"Deleted file: {self.current_file}")
-                
-                # Play next file
-                if self.playlist:
-                    if self.current_index >= len(self.playlist):
-                        self.current_index = 0
-                    self.play_file_at_index(self.current_index)
-                else:
-                    self.close()
-                    
-            except Exception as e:
-                self.logger.error(f"Delete failed: {e}")
-                self.session.open(
-                    MessageBox,
-                    _("Delete failed: ") + str(e),
-                    MessageBox.TYPE_ERROR
-                )
     
     def show_file_info(self):
         """Show detailed file information"""
@@ -476,91 +342,63 @@ class AdvancedVideoPlayer(MoviePlayer):
             info.append(f"File: {os.path.basename(self.current_file)}")
             info.append(f"Path: {os.path.dirname(self.current_file)}")
             info.append(f"Size: {size_mb:.2f} MB")
-            info.append(f"Modified: {self.format_timestamp(stat.st_mtime)}")
             
             # Video info from service
             service = self.session.nav.getCurrentService()
             if service:
                 info_obj = service.info()
                 if info_obj:
-                    width = info_obj.getInfo(iServiceInformation.sVideoWidth)
-                    height = info_obj.getInfo(iServiceInformation.sVideoHeight)
-                    if width > 0 and height > 0:
-                        info.append(f"Resolution: {width}x{height}")
+                    try:
+                        width = info_obj.getInfo(iServiceInformation.sVideoWidth)
+                        height = info_obj.getInfo(iServiceInformation.sVideoHeight)
+                        if width > 0 and height > 0:
+                            info.append(f"Resolution: {width}x{height}")
+                    except:
+                        pass
             
-            self.session.open(
-                MessageBox,
-                "\n".join(info),
-                MessageBox.TYPE_INFO
-            )
+            self.session.open(MessageBox, "\n".join(info), MessageBox.TYPE_INFO)
             
         except Exception as e:
             self.logger.error(f"Error getting file info: {e}")
     
-    def format_timestamp(self, timestamp):
-        """Format Unix timestamp to readable date"""
-        from datetime import datetime
-        return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
-    
     def show_video_menu(self):
         """Show video options menu"""
         options = [
-            (_("Audio track"), self.show_audio_menu),
-            (_("Subtitle track"), self.show_subtitle_menu),
-            (_("Video settings"), self.show_video_settings),
-            (_("Bookmark"), self.add_bookmark),
+            ("Audio Track", self.show_audio_menu),
+            ("Subtitle Track", self.show_subtitle_menu),
         ]
         
         self.session.openWithCallback(
-            self.menu_callback,
+            lambda choice: choice[1]() if choice else None,
             ChoiceBox,
-            _("Video Options"),
+            "Video Options",
             options
         )
     
-    def menu_callback(self, selection):
-        """Handle menu selection"""
-        if selection:
-            selection[1]()
-    
     def show_audio_menu(self):
         """Show audio track selection"""
-        if hasattr(self, 'switchAudio'):
-            self.switchAudio()
+        # Use InfoBarAudioSelection if available
+        if hasattr(self, 'audioSelection'):
+            try:
+                self.audioSelection()
+            except:
+                self.session.open(MessageBox, "Audio selection not available", MessageBox.TYPE_INFO)
     
     def show_subtitle_menu(self):
         """Show subtitle track selection"""
+        # Use InfoBarSubtitleSupport if available
         if hasattr(self, 'subtitleSelection'):
-            self.subtitleSelection()
-    
-    def show_video_settings(self):
-        """Show video settings"""
-        pass
-    
-    def add_bookmark(self):
-        """Add current position to bookmarks"""
-        service = self.session.nav.getCurrentService()
-        if service:
-            seek = service.seek()
-            if seek:
-                pos = seek.getPlayPosition()
-                if pos[0] == 0:
-                    position = pos[1] // 90000
-                    self.logger.info(f"Bookmark added at {position}s for {self.current_file}")
-                    
-                    self.session.open(
-                        MessageBox,
-                        _("Bookmark added at ") + self.format_time(position),
-                        MessageBox.TYPE_INFO,
-                        timeout=2
-                    )
+            try:
+                self.subtitleSelection()
+            except:
+                self.session.open(MessageBox, "Subtitle selection not available", MessageBox.TYPE_INFO)
     
     def leavePlayer(self):
         """Override leavePlayer to confirm exit"""
         self.session.openWithCallback(
             self.leavePlayerConfirmed,
             MessageBox,
-            _("Stop playback and return to file manager?"),
+            "Stop playback?",
             MessageBox.TYPE_YESNO
         )
     
@@ -569,6 +407,14 @@ class AdvancedVideoPlayer(MoviePlayer):
         if answer:
             self.close()
     
-    def handleLeave(self, how):
-        """Handle player exit"""
-        self.close()
+    def close(self):
+        """Clean up and close"""
+        try:
+            self.osd_hide_timer.stop()
+        except:
+            pass
+        
+        if HAS_MOVIEPLAYER:
+            MoviePlayer.close(self)
+        else:
+            Screen.close(self)

@@ -51,20 +51,30 @@ class SFTPClient:
             if key_filename:
                 connect_kwargs['key_filename'] = key_filename
             
-            self.ssh.connect(**connect_kwargs)
-            self.sftp = self.ssh.open_sftp()
-            
-            self.connected = True
-            self.host = host
-            self.username = username
-            self.current_path = self.sftp.normalize('.')
-            
-            return True
+            try:
+                self.ssh.connect(**connect_kwargs)
+                self.sftp = self.ssh.open_sftp()
+                
+                self.connected = True
+                self.host = host
+                self.username = username
+                self.current_path = self.sftp.normalize('.')
+                
+                return True
+            except Exception as e:
+                # Clean up on connection failure
+                if self.ssh:
+                    try:
+                        self.ssh.close()
+                    except:
+                        pass
+                    self.ssh = None
+                raise SFTPError(f"SFTP connection failed: {str(e)}")
             
         except ImportError:
             raise SFTPError("Paramiko library not installed. Install python3-paramiko")
         except Exception as e:
-            raise SFTPError(f"SFTP connection failed: {str(e)}")
+            raise SFTPError(f"SFTP error: {str(e)}")
     
     def disconnect(self):
         """Disconnect from server"""
@@ -83,6 +93,15 @@ class SFTPClient:
             self.ssh = None
         
         self.connected = False
+    
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self.disconnect()
+        return False
     
     def list_directory(self, path=None):
         """
@@ -264,6 +283,10 @@ class SFTPClient:
         except:
             self.connected = False
             return False
+    
+    def __del__(self):
+        """Destructor - ensure cleanup"""
+        self.disconnect()
 
 class SFTPError(Exception):
     """SFTP operation error"""

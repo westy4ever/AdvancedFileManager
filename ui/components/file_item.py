@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from Components.GUIComponent import GUIComponent
-from Components.Sources.List import List  # Fixed import
 from enigma import eListboxPythonMultiContent, gFont, RT_HALIGN_LEFT, RT_VALIGN_CENTER, eListbox
 
 class FileItemComponent(GUIComponent):

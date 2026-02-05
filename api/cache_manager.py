@@ -53,13 +53,23 @@ class CacheManager:
                     # Move to end (most recently used)
                     self.cache.move_to_end(key)
                     self.hits += 1
-                    return entry['data']
+                    # Return a copy to prevent external modification
+                    return self._safe_copy(entry['data'])
                 else:
                     # Expired, remove
                     del self.cache[key]
             
             self.misses += 1
             return None
+    
+    def _safe_copy(self, data):
+        """Create a safe copy of data"""
+        if isinstance(data, dict):
+            return data.copy()
+        elif isinstance(data, list):
+            return data[:]
+        else:
+            return data
     
     def set(self, path, data):
         """
@@ -136,6 +146,7 @@ class CacheManager:
                     if current_time - entry['timestamp'] < self.expire_time:
                         valid_entries[key] = entry
                 
+                # Save to file
                 with open(self.cache_file, 'w') as f:
                     json.dump(valid_entries, f)
                     
@@ -154,8 +165,12 @@ class CacheManager:
                     
         except Exception as e:
             print(f"Cache load error: {e}")
-            self.cache = OrderedDict()
+            with self.lock:
+                self.cache = OrderedDict()
     
     def __del__(self):
         """Destructor - save cache on exit"""
-        self.save_cache()
+        try:
+            self.save_cache()
+        except:
+            pass

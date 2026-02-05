@@ -2,12 +2,10 @@
 from Screens.Screen import Screen
 from Components.ActionMap import ActionMap
 from Components.Label import Label
-from Components.Sources.List import List  # Fixed import
-from Components.ScrollLabel import ScrollLabel
-from enigma import eListboxPythonMultiContent, gFont, RT_HALIGN_LEFT, RT_VALIGN_CENTER, eSize
-
-from .components.file_item import FileItemComponent
-from .components.navigation_bar import NavigationBar
+from Components.MenuList import MenuList
+from Components.Sources.StaticText import StaticText
+from enigma import eListboxPythonMultiContent, gFont, RT_HALIGN_LEFT, RT_VALIGN_CENTER
+import os
 
 class DualPaneLayout:
     """
@@ -35,32 +33,18 @@ class DualPaneLayout:
         # UI Components
         self.left_list = None
         self.right_list = None
-        self.left_nav = None
-        self.right_nav = None
         
         self.setup_ui()
     
     def setup_ui(self):
         """Initialize UI components"""
-        # Left panel
-        self.left_list = FileListComponent()
-        self.left_list.onSelectionChanged.append(self.on_left_selection_changed)
-        
-        self.left_nav = NavigationBar()
-        self.left_nav.set_path(self.left_path)
-        
-        # Right panel
-        self.right_list = FileListComponent()
-        self.right_list.onSelectionChanged.append(self.on_right_selection_changed)
-        
-        self.right_nav = NavigationBar()
-        self.right_nav.set_path(self.right_path)
+        # Create menu lists for both panels
+        self.left_list = MenuList([])
+        self.right_list = MenuList([])
         
         # Add to screen
         self.screen["left_list"] = self.left_list
         self.screen["right_list"] = self.right_list
-        self.screen["left_path"] = self.left_nav
-        self.screen["right_path"] = self.right_nav
     
     def refresh(self, panel=None):
         """
@@ -78,8 +62,6 @@ class DualPaneLayout:
     def load_directory(self, panel, path):
         """Load directory into panel"""
         try:
-            import os
-            
             items = []
             
             # Parent directory
@@ -100,12 +82,24 @@ class DualPaneLayout:
             except PermissionError:
                 self.show_error(f"Permission denied: {path}")
                 return
+            except Exception as e:
+                self.show_error(f"Error reading directory: {e}")
+                return
             
             # Separate dirs and files
             dirs = []
             files = []
             
             for entry in entries:
+                # Skip hidden files if configured
+                try:
+                    from Components.config import config
+                    if not config.plugins.advancedfilemanager.showhidden.value and entry.startswith('.'):
+                        continue
+                except:
+                    if entry.startswith('.'):
+                        continue
+                
                 full_path = os.path.join(path, entry)
                 try:
                     stat = os.stat(full_path)
@@ -127,7 +121,8 @@ class DualPaneLayout:
                     else:
                         files.append(item)
                         
-                except (OSError, IOError):
+                except (OSError, IOError) as e:
+                    # Skip files we can't access
                     continue
             
             # Sort
@@ -141,12 +136,14 @@ class DualPaneLayout:
             if panel == 'left':
                 self.left_files = items
                 self.left_path = path
-                self.left_nav.set_path(path)
+                if hasattr(self.screen, 'updateLeftPath'):
+                    self.screen.updateLeftPath(path)
                 self.update_list('left')
             else:
                 self.right_files = items
                 self.right_path = path
-                self.right_nav.set_path(path)
+                if hasattr(self.screen, 'updateRightPath'):
+                    self.screen.updateRightPath(path)
                 self.update_list('right')
             
         except Exception as e:
@@ -169,7 +166,7 @@ class DualPaneLayout:
             
             # Format display
             display = self.format_item(item, is_selected)
-            list_data.append(display)
+            list_data.append((display, item))
         
         list_widget.setList(list_data)
     
@@ -179,11 +176,11 @@ class DualPaneLayout:
         
         # Add indicators
         if item.get('is_parent'):
-            icon = "📁"
+            icon = "[..]"
         elif item['is_dir']:
-            icon = "📂" if not item.get('is_link') else "🔗"
+            icon = "[DIR]" if not item.get('is_link') else "[LNK]"
         else:
-            icon = "📄"
+            icon = "    "
         
         # Format size
         if item['is_dir']:
@@ -194,13 +191,18 @@ class DualPaneLayout:
                 size_str = f"{size}B"
             elif size < 1024*1024:
                 size_str = f"{size/1024:.1f}K"
-            else:
+            elif size < 1024*1024*1024:
                 size_str = f"{size/(1024*1024):.1f}M"
+            else:
+                size_str = f"{size/(1024*1024*1024):.1f}G"
         
         # Selection indicator
         sel = "[X]" if is_selected else "[ ]"
         
-        return (icon, sel, name, size_str, item['path'], item['is_dir'])
+        # Create display string
+        display = f"{sel} {icon} {name:<40} {size_str:>10}"
+        
+        return display
     
     def switch_panel(self):
         """Switch active panel"""
@@ -235,18 +237,20 @@ class DualPaneLayout:
         selections = self.get_active_selections()
         list_widget = self.get_active_list()
         
-        index = list_widget.getSelectionIndex()
-        if index < 0 or index >= len(files):
-            return
-        
-        path = files[index]['path']
-        
-        if path in selections:
-            selections.remove(path)
-        else:
-            selections.add(path)
-        
-        self.update_list(panel)
+        try:
+            current = list_widget.getCurrent()
+            if current and len(current) > 1:
+                item = current[1]
+                path = item['path']
+                
+                if path in selections:
+                    selections.remove(path)
+                else:
+                    selections.add(path)
+                
+                self.update_list(panel)
+        except Exception as e:
+            print(f"Toggle selection error: {e}")
     
     def select_all(self):
         """Select all items in active panel"""
@@ -290,30 +294,10 @@ class DualPaneLayout:
         
         return [f for f in files if f['path'] in selections]
     
-    def on_left_selection_changed(self):
-        """Handle left panel selection change"""
-        pass
-    
-    def on_right_selection_changed(self):
-        """Handle right panel selection change"""
-        pass
-    
     def show_error(self, message):
         """Display error message"""
         # Delegate to screen
         if hasattr(self.screen, 'show_error'):
             self.screen.show_error(message)
-
-
-class FileListComponent(List):
-    """Enhanced List component for file display"""
-    
-    def __init__(self):
-        List.__init__(self)
-        self.onSelectionChanged = []
-    
-    def selectionChanged(self):
-        """Override to emit signal"""
-        List.selectionChanged(self)
-        for callback in self.onSelectionChanged:
-            callback()
+        else:
+            print(f"Error: {message}")

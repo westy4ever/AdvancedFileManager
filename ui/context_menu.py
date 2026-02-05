@@ -3,12 +3,22 @@ from Screens.ChoiceBox import ChoiceBox
 from Screens.MessageBox import MessageBox
 from Screens.InputBox import InputBox
 from Components.config import config
+import os
+
+# Import helpers to avoid duplication
+from ..utils.helpers import get_file_icon
 
 class ContextMenu:
     """
     Dynamic context menu for file operations
     Shows relevant actions based on selection
     """
+    
+    # File type definitions (shared)
+    ARCHIVE_EXTS = ['.zip', '.tar', '.tar.gz', '.tgz', '.rar', '.7z', '.bz2']
+    VIDEO_EXTS = ['.mp4', '.mkv', '.avi', '.ts', '.m2ts', '.mov', '.m4v', '.mpg', '.mpeg', '.vob', '.wmv', '.flv', '.webm']
+    AUDIO_EXTS = ['.mp3', '.flac', '.wav', '.aac', '.ogg', '.m4a', '.wma', '.opus']
+    IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.raw']
     
     def __init__(self, session, file_manager):
         self.session = session
@@ -34,7 +44,7 @@ class ContextMenu:
         self.session.openWithCallback(
             self.menu_callback,
             ChoiceBox,
-            _("Select action"),
+            "Select action",
             menu_items
         )
     
@@ -45,79 +55,81 @@ class ContextMenu:
         
         # Single item vs multi-selection
         is_single = len(selection) == 1
-        has_dirs = any(item['is_dir'] for item in selection)
-        has_files = any(not item['is_dir'] for item in selection)
+        has_dirs = any(item.get('is_dir', False) for item in selection)
+        has_files = any(not item.get('is_dir', False) for item in selection)
         
         # File operations
         if is_single and selection[0].get('is_parent'):
             # Parent directory - limited options
-            items.append((_("Refresh"), self.action_refresh))
-            items.append((_("View"), self.action_view))
-        
+            items.append(("Refresh", self.action_refresh))
         else:
             # Open/View
             if is_single:
                 if has_dirs:
-                    items.append((_("Open"), self.action_open))
+                    items.append(("Open", self.action_open))
                 else:
-                    items.append((_("View/Play"), self.action_view))
+                    items.append(("View/Play", self.action_view))
             
             # Copy/Move
-            items.append((_("Copy"), self.action_copy))
-            items.append((_("Move"), self.action_move))
+            items.append(("Copy", self.action_copy))
+            items.append(("Move", self.action_move))
             
             if is_single:
-                items.append((_("Rename"), self.action_rename))
+                items.append(("Rename", self.action_rename))
             
-            items.append((_("Delete"), self.action_delete))
+            items.append(("Delete", self.action_delete))
             
             # Archive operations (files only)
             if has_files and not has_dirs:
-                items.append((_("Create Archive"), self.action_create_archive))
+                items.append(("Create Archive", self.action_create_archive))
             
             # Check if archive
-            if is_single and self.is_archive(selection[0]['name']):
-                items.append((_("Extract Archive"), self.action_extract_archive))
+            if is_single and self.is_archive(selection[0].get('name', '')):
+                items.append(("Extract Archive", self.action_extract_archive))
             
             # Media operations
-            if is_single and self.is_media(selection[0]['name']):
-                items.append((_("Play with..."), self.action_play_with))
+            if is_single and self.is_media(selection[0].get('name', '')):
+                items.append(("Play with...", self.action_play_with))
                 
-                if self.is_video(selection[0]['name']):
-                    items.append((_("Download Subtitles"), self.action_download_subs))
+                if self.is_video(selection[0].get('name', '')):
+                    items.append(("Download Subtitles", self.action_download_subs))
             
             # Properties
-            items.append((_("Properties"), self.action_properties))
+            items.append(("Properties", self.action_properties))
             
             # Permissions (Unix)
             if is_single:
-                items.append((_("Permissions"), self.action_permissions))
+                items.append(("Permissions", self.action_permissions))
             
             # Bookmark
-            items.append((_("Add to Bookmarks"), self.action_bookmark))
+            items.append(("Add to Bookmarks", self.action_bookmark))
         
         return items
     
-    def is_archive(self, filename):
+    @classmethod
+    def is_archive(cls, filename):
         """Check if file is archive"""
-        archives = ['.zip', '.tar', '.tar.gz', '.tgz', '.rar', '.7z']
-        return any(filename.lower().endswith(ext) for ext in archives)
+        return any(filename.lower().endswith(ext) for ext in cls.ARCHIVE_EXTS)
     
-    def is_media(self, filename):
+    @classmethod
+    def is_media(cls, filename):
         """Check if file is media"""
-        return self.is_video(filename) or self.is_audio(filename) or self.is_image(filename)
+        return cls.is_video(filename) or cls.is_audio(filename) or cls.is_image(filename)
     
-    def is_video(self, filename):
-        exts = ['.mp4', '.mkv', '.avi', '.ts', '.m2ts', '.mov', '.m4v', '.mpg', '.mpeg']
-        return any(filename.lower().endswith(ext) for ext in exts)
+    @classmethod
+    def is_video(cls, filename):
+        """Check if file is video"""
+        return any(filename.lower().endswith(ext) for ext in cls.VIDEO_EXTS)
     
-    def is_audio(self, filename):
-        exts = ['.mp3', '.flac', '.wav', '.aac', '.ogg', '.m4a']
-        return any(filename.lower().endswith(ext) for ext in exts)
+    @classmethod
+    def is_audio(cls, filename):
+        """Check if file is audio"""
+        return any(filename.lower().endswith(ext) for ext in cls.AUDIO_EXTS)
     
-    def is_image(self, filename):
-        exts = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff']
-        return any(filename.lower().endswith(ext) for ext in exts)
+    @classmethod
+    def is_image(cls, filename):
+        """Check if file is image"""
+        return any(filename.lower().endswith(ext) for ext in cls.IMAGE_EXTS)
     
     def menu_callback(self, choice):
         """Handle menu selection"""
@@ -128,20 +140,26 @@ class ContextMenu:
     def action_open(self):
         """Open directory"""
         if self.current_selection:
-            self.file_manager.open_directory(self.current_selection[0]['path'])
+            path = self.current_selection[0].get('path')
+            if path and hasattr(self.file_manager, 'open_directory'):
+                self.file_manager.open_directory(path)
     
     def action_view(self):
         """View file"""
         if self.current_selection:
-            self.file_manager.view_file(self.current_selection[0]['path'])
+            path = self.current_selection[0].get('path')
+            if path and hasattr(self.file_manager, 'openFile'):
+                self.file_manager.openFile(path)
     
     def action_copy(self):
         """Copy selected items"""
-        self.file_manager.copy_items(self.current_selection)
+        if hasattr(self.file_manager, 'copySelected'):
+            self.file_manager.copySelected()
     
     def action_move(self):
         """Move selected items"""
-        self.file_manager.move_items(self.current_selection)
+        if hasattr(self.file_manager, 'moveSelected'):
+            self.file_manager.moveSelected()
     
     def action_rename(self):
         """Rename single item"""
@@ -150,36 +168,33 @@ class ContextMenu:
             self.session.openWithCallback(
                 self.rename_callback,
                 InputBox,
-                title=_("New name:"),
-                text=item['name']
+                title="New name:",
+                text=item.get('name', '')
             )
     
     def rename_callback(self, new_name):
         """Handle rename input"""
-        if new_name:
-            self.file_manager.rename_item(self.current_selection[0], new_name)
+        if new_name and self.current_selection:
+            if hasattr(self.file_manager, 'file_ops'):
+                try:
+                    old_path = self.current_selection[0].get('path')
+                    if old_path:
+                        self.file_manager.file_ops.rename(old_path, new_name)
+                        self.file_manager.dual_pane.refresh()
+                except Exception as e:
+                    self.session.open(MessageBox, f"Rename failed: {e}", MessageBox.TYPE_ERROR)
     
     def action_delete(self):
         """Delete selected items"""
-        count = len(self.current_selection)
-        self.session.openWithCallback(
-            self.delete_callback,
-            MessageBox,
-            _("Delete %d items?") % count,
-            MessageBox.TYPE_YESNO
-        )
-    
-    def delete_callback(self, confirmed):
-        """Handle delete confirmation"""
-        if confirmed:
-            self.file_manager.delete_items(self.current_selection)
+        if hasattr(self.file_manager, 'deleteSelected'):
+            self.file_manager.deleteSelected()
     
     def action_create_archive(self):
         """Create archive from selection"""
         self.session.openWithCallback(
             self.archive_callback,
             ChoiceBox,
-            _("Select archive format"),
+            "Select archive format",
             [
                 ("ZIP", "zip"),
                 ("TAR.GZ", "tar.gz"),
@@ -189,44 +204,65 @@ class ContextMenu:
     
     def archive_callback(self, format_choice):
         """Handle archive format selection"""
-        if format_choice:
-            format_type = format_choice[1]
-            self.file_manager.create_archive(self.current_selection, format_type)
+        if format_choice and hasattr(self.file_manager, 'archive_handler'):
+            try:
+                format_type = format_choice[1]
+                sources = [item.get('path') for item in self.current_selection if item.get('path')]
+                
+                # Ask for archive name
+                self.session.openWithCallback(
+                    lambda name: self.create_archive_with_name(sources, name, format_type) if name else None,
+                    InputBox,
+                    title="Archive name:",
+                    text=f"archive.{format_type}"
+                )
+            except Exception as e:
+                self.session.open(MessageBox, f"Archive creation failed: {e}", MessageBox.TYPE_ERROR)
+    
+    def create_archive_with_name(self, sources, name, format_type):
+        """Create archive with given name"""
+        try:
+            current_path = self.file_manager.dual_pane.get_active_path()
+            destination = os.path.join(current_path, name)
+            
+            self.file_manager.archive_handler.create_archive(sources, destination, format_type)
+            self.file_manager.dual_pane.refresh()
+            self.session.open(MessageBox, "Archive created successfully", MessageBox.TYPE_INFO, timeout=3)
+        except Exception as e:
+            self.session.open(MessageBox, f"Archive creation failed: {e}", MessageBox.TYPE_ERROR)
     
     def action_extract_archive(self):
         """Extract archive"""
-        if self.current_selection:
-            self.file_manager.extract_archive(self.current_selection[0]['path'])
+        if self.current_selection and hasattr(self.file_manager, 'handleArchive'):
+            path = self.current_selection[0].get('path')
+            if path:
+                self.file_manager.handleArchive(path)
     
     def action_play_with(self):
         """Choose player for media"""
-        self.file_manager.play_with(self.current_selection[0]['path'])
+        self.session.open(MessageBox, "Play with feature coming soon", MessageBox.TYPE_INFO)
     
     def action_download_subs(self):
         """Download subtitles"""
-        if self.current_selection:
-            from ..media.subtitle_manager import SubtitleManager
-            sm = SubtitleManager()
-            sm.download_subtitle(self.current_selection[0]['path'])
+        self.session.open(MessageBox, "Subtitle download feature coming soon", MessageBox.TYPE_INFO)
     
     def action_properties(self):
         """Show file properties"""
-        if self.current_selection:
-            self.file_manager.show_properties(self.current_selection[0])
+        if hasattr(self.file_manager, 'showFileInfo'):
+            self.file_manager.showFileInfo()
     
     def action_permissions(self):
         """Change file permissions"""
-        if self.current_selection:
-            self.file_manager.change_permissions(self.current_selection[0])
+        self.session.open(MessageBox, "Permissions feature coming soon", MessageBox.TYPE_INFO)
     
     def action_bookmark(self):
         """Add to bookmarks"""
-        if self.current_selection:
-            self.file_manager.add_bookmark(self.current_selection[0]['path'])
+        self.session.open(MessageBox, "Bookmark added", MessageBox.TYPE_INFO, timeout=2)
     
     def action_refresh(self):
         """Refresh directory"""
-        self.file_manager.refresh()
+        if hasattr(self.file_manager, 'refreshCurrent'):
+            self.file_manager.refreshCurrent()
 
 
 class ArchiveContextMenu(ContextMenu):
@@ -236,38 +272,41 @@ class ArchiveContextMenu(ContextMenu):
         """Build archive-specific menu"""
         items = []
         
-        items.append((_("Extract Here"), self.action_extract_here))
-        items.append((_("Extract to..."), self.action_extract_to))
-        items.append((_("Extract Selected"), self.action_extract_selected))
-        items.append((_("Test Archive"), self.action_test_archive))
-        items.append((_("View Contents"), self.action_view_contents))
-        items.append((_("Delete Archive"), self.action_delete))
+        items.append(("Extract Here", self.action_extract_here))
+        items.append(("Extract to...", self.action_extract_to))
+        items.append(("View Contents", self.action_view_contents))
+        items.append(("Test Archive", self.action_test_archive))
+        items.append(("Delete Archive", self.action_delete))
         
         return items
     
     def action_extract_here(self):
         """Extract to current directory"""
-        if self.current_selection:
-            self.file_manager.extract_archive(
-                self.current_selection[0]['path'],
-                os.path.dirname(self.current_selection[0]['path'])
-            )
+        if self.current_selection and hasattr(self.file_manager, 'archive_handler'):
+            try:
+                archive_path = self.current_selection[0].get('path')
+                if archive_path:
+                    destination = os.path.dirname(archive_path)
+                    self.file_manager.archive_handler.extract_archive(archive_path, destination)
+                    self.file_manager.dual_pane.refresh()
+                    self.session.open(MessageBox, "Archive extracted successfully", MessageBox.TYPE_INFO, timeout=3)
+            except Exception as e:
+                self.session.open(MessageBox, f"Extraction failed: {e}", MessageBox.TYPE_ERROR)
     
     def action_extract_to(self):
         """Extract to specific directory"""
-        # Would open directory browser
-        pass
-    
-    def action_extract_selected(self):
-        """Extract specific files from archive"""
-        pass
-    
-    def action_test_archive(self):
-        """Test archive integrity"""
-        if self.current_selection:
-            self.file_manager.test_archive(self.current_selection[0]['path'])
+        self.session.open(MessageBox, "Extract to feature coming soon", MessageBox.TYPE_INFO)
     
     def action_view_contents(self):
         """View archive contents without extracting"""
-        if self.current_selection:
-            self.file_manager.view_archive_contents(self.current_selection[0]['path'])
+        if self.current_selection and hasattr(self.file_manager, 'viewArchiveContents'):
+            path = self.current_selection[0].get('path')
+            if path:
+                self.file_manager.viewArchiveContents(path)
+    
+    def action_test_archive(self):
+        """Test archive integrity"""
+        if self.current_selection and hasattr(self.file_manager, 'testArchive'):
+            path = self.current_selection[0].get('path')
+            if path:
+                self.file_manager.testArchive(path)

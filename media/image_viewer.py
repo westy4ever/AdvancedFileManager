@@ -4,10 +4,23 @@ from Components.ActionMap import ActionMap
 from Components.Label import Label
 from Components.Pixmap import Pixmap
 from Components.Slider import Slider
+from Components.Sources.StaticText import StaticText
 from enigma import eTimer, loadPic, getDesktop
-from PIL import Image, ImageFilter, ImageEnhance
 import os
 import random
+
+# PIL compatibility fix
+try:
+    from PIL import Image
+    try:
+        from PIL.Image import Resampling
+        LANCZOS = Resampling.LANCZOS
+    except (ImportError, AttributeError):
+        LANCZOS = Image.LANCZOS
+    
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
 
 # Import our logger
 from ..utils.logger import Logger
@@ -36,6 +49,11 @@ class ImageViewer(Screen):
         self.session = session
         self.logger = Logger("ImageViewer")
         
+        if not HAS_PIL:
+            self.logger.error("PIL/Pillow not available")
+            self.close()
+            return
+        
         # Image state
         self.current_file = file_path
         self.image_list = image_list or []
@@ -55,10 +73,10 @@ class ImageViewer(Screen):
         
         # UI Elements
         self["image"] = Pixmap()
-        self["filename"] = Label("")
-        self["info"] = Label("")
-        self["controls"] = Label("◄ ►: Navigate | ▲ ▼: Zoom | 0: Rotate | Play: Slideshow | Exit: Close")
-        self["zoom"] = Label("100%")
+        self["filename"] = StaticText("")
+        self["info"] = StaticText("")
+        self["controls"] = StaticText("◄ ►: Navigate | ▲ ▼: Zoom | 0: Rotate | Play: Slideshow | Exit: Close")
+        self["zoom"] = StaticText("100%")
         
         # Actions
         self["actions"] = ActionMap(["WizardActions", "MediaPlayerActions", "ColorActions", "NumberActions"],
@@ -176,9 +194,9 @@ class ImageViewer(Screen):
                 new_width = int(img_width * self.zoom_level)
                 new_height = int(img_height * self.zoom_level)
             
-            # Resize
+            # Resize with compatibility fix
             if new_width != img_width or new_height != img_height:
-                image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                image = image.resize((new_width, new_height), LANCZOS)
             
             # Save to temporary file for Enigma2 display
             temp_path = "/tmp/afm_image_view.jpg"

@@ -6,6 +6,13 @@ import json
 from datetime import datetime, timedelta
 from Components.config import config
 
+# Import security manager
+try:
+    from ..utils.security import SecurityManager, SecurityError
+    HAS_SECURITY = True
+except ImportError:
+    HAS_SECURITY = False
+
 class TrashManager:
     """
     Trash/Recycle Bin functionality for safe file deletion
@@ -15,6 +22,10 @@ class TrashManager:
     
     def __init__(self, trash_path=None):
         self.trash_path = trash_path or config.plugins.advancedfilemanager.trash_path.value
+        if HAS_SECURITY:
+            self.security = SecurityManager()
+        else:
+            self.security = None
         self.ensure_trash_exists()
     
     def ensure_trash_exists(self):
@@ -37,6 +48,16 @@ class TrashManager:
         """
         if not os.path.exists(path):
             raise TrashError(f"Path does not exist: {path}")
+        
+        # Security validation
+        if self.security:
+            try:
+                validated_path = self.security.validate_path(path)
+                is_safe, reason = self.security.is_safe_operation(path, operation='delete')
+                if not is_safe:
+                    raise TrashError(f"Security check failed: {reason}")
+            except SecurityError as e:
+                raise TrashError(f"Security error: {e}")
         
         # Generate unique name in trash
         original_name = os.path.basename(path)
@@ -75,6 +96,14 @@ class TrashManager:
         
         if not original_path:
             raise TrashError(f"Cannot determine original path for: {trash_name}")
+        
+        # Security validation of restore destination
+        if self.security:
+            try:
+                validated_path = self.security.validate_path(original_path, allow_write=True)
+                original_path = validated_path
+            except SecurityError as e:
+                raise TrashError(f"Cannot restore to forbidden location: {e}")
         
         # Check if original location exists
         if os.path.exists(original_path):
@@ -148,16 +177,19 @@ class TrashManager:
                 item_path = os.path.join(self.trash_path, entry)
                 info = self._get_trash_info(entry)
                 
-                stat = os.stat(item_path)
-                
-                items.append({
-                    'trash_name': entry,
-                    'original_path': info.get('original_path', 'Unknown'),
-                    'deleted_date': info.get('deletion_date', 'Unknown'),
-                    'size': stat.st_size,
-                    'is_dir': os.path.isdir(item_path),
-                    'path': item_path
-                })
+                try:
+                    stat = os.stat(item_path)
+                    
+                    items.append({
+                        'trash_name': entry,
+                        'original_path': info.get('original_path', 'Unknown'),
+                        'deleted_date': info.get('deletion_date', 'Unknown'),
+                        'size': stat.st_size,
+                        'is_dir': os.path.isdir(item_path),
+                        'path': item_path
+                    })
+                except (OSError, IOError):
+                    continue
             
             # Sort by deletion date (newest first)
             items.sort(key=lambda x: x['deleted_date'], reverse=True)
@@ -204,10 +236,12 @@ class TrashManager:
         
         for item in items:
             try:
-                deletion_date = datetime.strptime(item['deleted_date'], "%Y-%m-%d %H:%M:%S")
-                if deletion_date < cutoff_date:
-                    self.delete_permanently(item['trash_name'])
-                    deleted += 1
+                deletion_date_str = item['deleted_date']
+                if deletion_date_str != 'Unknown':
+                    deletion_date = datetime.strptime(deletion_date_str, "%Y-%m-%d %H:%M:%S")
+                    if deletion_date < cutoff_date:
+                        self.delete_permanently(item['trash_name'])
+                        deleted += 1
             except Exception as e:
                 failed.append((item['trash_name'], str(e)))
         
@@ -227,9 +261,15 @@ class TrashManager:
                     for dirpath, dirnames, filenames in os.walk(item_path):
                         for f in filenames:
                             fp = os.path.join(dirpath, f)
-                            total_size += os.path.getsize(fp)
+                            try:
+                                total_size += os.path.getsize(fp)
+                            except:
+                                continue
                 else:
-                    total_size += os.path.getsize(item_path)
+                    try:
+                        total_size += os.path.getsize(item_path)
+                    except:
+                        continue
                     
         except Exception as e:
             print(f"Error calculating trash size: {e}")
@@ -240,6 +280,10 @@ class TrashManager:
         """Generate unique name for trash"""
         timestamp = int(time.time())
         base_name, ext = os.path.splitext(original_name)
+        
+        # Sanitize base name
+        base_name = base_name.replace('/', '_').replace('\\', '_')
+        
         return f"{base_name}_{timestamp}{ext}"
     
     def _create_trash_info(self, trash_name, original_path):
@@ -289,6 +333,8 @@ class TrashManager:
             if not os.path.exists(new_path):
                 return new_path
             counter += 1
+            if counter > 1000:  # Prevent infinite loop
+                raise TrashError("Cannot generate unique filename")
 
 class TrashError(Exception):
     """Trash operation error"""

@@ -5,6 +5,9 @@ import threading
 from enigma import eTimer
 from Components.config import config
 
+# Import security manager
+from ..utils.security import SecurityManager, SecurityError
+
 class FileOperationError(Exception):
     """Custom exception for file operations"""
     pass
@@ -21,21 +24,14 @@ class FileOperationManager:
         self.operation_thread = None
         self.progress_callback = None
         self.error_callback = None
+        self.security = SecurityManager()
         
     def validate_path(self, path):
-        """Security: Validate and sanitize paths"""
-        if not path or not isinstance(path, str):
-            raise PathNotFoundError("Invalid path")
-        
-        # Prevent directory traversal attacks
-        real_path = os.path.realpath(path)
-        blocked_paths = ['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/etc', '/proc', '/sys']
-        
-        for blocked in blocked_paths:
-            if real_path.startswith(blocked):
-                raise PermissionError(f"Access denied to system path: {path}")
-        
-        return real_path
+        """Security: Validate and sanitize paths using SecurityManager"""
+        try:
+            return self.security.validate_path(path)
+        except SecurityError as e:
+            raise PermissionError(str(e))
     
     def copy(self, src, dst, overwrite=False):
         """Copy files or directories with progress tracking"""
@@ -49,6 +45,11 @@ class FileOperationManager:
             if os.path.exists(dst) and not overwrite:
                 raise FileOperationError(f"Destination exists: {dst}")
             
+            # Additional security check
+            is_safe, reason = self.security.is_safe_operation(src, dst, 'copy')
+            if not is_safe:
+                raise PermissionError(reason)
+            
             if os.path.isdir(src):
                 shutil.copytree(src, dst, dirs_exist_ok=overwrite)
             else:
@@ -56,6 +57,8 @@ class FileOperationManager:
                 
             return True
             
+        except SecurityError as e:
+            raise PermissionError(f"Security error: {e}")
         except Exception as e:
             raise FileOperationError(f"Copy failed: {str(e)}")
     
@@ -64,8 +67,16 @@ class FileOperationManager:
         try:
             src = self.validate_path(src)
             dst = self.validate_path(dst)
+            
+            # Security check
+            is_safe, reason = self.security.is_safe_operation(src, dst, 'move')
+            if not is_safe:
+                raise PermissionError(reason)
+            
             shutil.move(src, dst)
             return True
+        except SecurityError as e:
+            raise PermissionError(f"Security error: {e}")
         except Exception as e:
             raise FileOperationError(f"Move failed: {str(e)}")
     
@@ -75,8 +86,16 @@ class FileOperationManager:
             src = self.validate_path(src)
             dst = os.path.join(os.path.dirname(src), new_name)
             dst = self.validate_path(dst)
+            
+            # Security check
+            is_safe, reason = self.security.is_safe_operation(src, dst, 'move')
+            if not is_safe:
+                raise PermissionError(reason)
+            
             os.rename(src, dst)
             return True
+        except SecurityError as e:
+            raise PermissionError(f"Security error: {e}")
         except Exception as e:
             raise FileOperationError(f"Rename failed: {str(e)}")
     
@@ -85,20 +104,32 @@ class FileOperationManager:
         try:
             path = self.validate_path(path)
             
+            # Security check
+            is_safe, reason = self.security.is_safe_operation(path, operation='delete')
+            if not is_safe:
+                raise PermissionError(reason)
+            
             if use_trash is None:
                 use_trash = config.plugins.advancedfilemanager.use_trash.value
             
             if use_trash:
-                from .trash_manager import TrashManager
-                trash = TrashManager()
-                return trash.trash(path)
-            else:
+                try:
+                    from .trash_manager import TrashManager
+                    trash = TrashManager()
+                    return trash.trash(path)
+                except ImportError:
+                    # Fall back to direct delete if trash not available
+                    use_trash = False
+            
+            if not use_trash:
                 if os.path.isdir(path):
                     shutil.rmtree(path)
                 else:
                     os.remove(path)
                 return True
                 
+        except SecurityError as e:
+            raise PermissionError(f"Security error: {e}")
         except Exception as e:
             raise FileOperationError(f"Delete failed: {str(e)}")
     
@@ -139,6 +170,8 @@ class FileOperationManager:
                 'is_link': os.path.islink(path),
                 'mime_type': self._get_mime_type(path)
             }
+        except SecurityError as e:
+            raise PermissionError(f"Security error: {e}")
         except Exception as e:
             raise FileOperationError(f"Cannot get file info: {str(e)}")
     
