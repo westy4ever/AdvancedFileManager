@@ -1,0 +1,67 @@
+{
+    "subtitle_operations": {
+        "subtitle_download": ["KEY_SUBTITLE", "KEY_TEXT"],
+        "subtitle_delay_plus": ["KEY_CHANNELUP"],
+        "subtitle_delay_minus": ["KEY_CHANNELDOWN"],
+        "toggle_subtitles": ["KEY_HELP"],
+        "subtitle_sync_reset": ["KEY_0"]
+    },
+    "navigation": {
+        "ok_select": ["KEY_OK", "KEY_ENTER"],
+        "back_exit": ["KEY_EXIT", "KEY_BACK"],
+        "up": ["KEY_UP"],
+        "down": ["KEY_DOWN"],
+        "left": ["KEY_LEFT"],
+        "right": ["KEY_RIGHT"],
+        "page_up": ["KEY_PAGEUP", "KEY_CHANNELUP"],
+        "page_down": ["KEY_PAGEDOWN", "KEY_CHANNELDOWN"],
+        "home": ["KEY_HOME"],
+        "end": ["KEY_END"]
+    },
+    "file_operations": {
+        "context_menu": ["KEY_MENU"],
+        "file_info": ["KEY_INFO"],
+        "select_item": ["KEY_SELECT", "KEY_SPACE"],
+        "select_all": ["KEY_GREEN"],
+        "refresh": ["KEY_F5", "KEY_REWIND"],
+        "search": ["KEY_F3", "KEY_SEARCH"],
+        "new_folder": ["KEY_F7"],
+        "rename": ["KEY_F2"],
+        "delete": ["KEY_DELETE", "KEY_RED"],
+        "copy": ["KEY_COPY", "KEY_GREEN"],
+        "cut": ["KEY_CUT", "KEY_YELLOW"],
+        "paste": ["KEY_PASTE", "KEY_BLUE"],
+        "bookmark": ["KEY_BOOKMARKS", "KEY_Favorites"]
+    },
+    "panel_operations": {
+        "switch_panel": ["KEY_TAB"],
+        "sync_panels": ["KEY_SYNC"],
+        "compare_directories": ["KEY_COMPARE"]
+    },
+    "media_controls": {
+        "play_pause": ["KEY_PLAYPAUSE", "KEY_OK"],
+        "stop": ["KEY_STOP"],
+        "fast_forward": ["KEY_FASTFORWARD", "KEY_RIGHT"],
+        "rewind": ["KEY_REWIND", "KEY_LEFT"],
+        "next_track": ["KEY_NEXT"],
+        "prev_track": ["KEY_PREVIOUS"]
+    },
+    "archive_operations": {
+        "extract": ["KEY_E"],
+        "create_archive": ["KEY_A"],
+        "test_archive": ["KEY_T"]
+    },
+    "view_modes": {
+        "toggle_hidden": ["KEY_H"],
+        "change_view": ["KEY_V"],
+        "sort_by_name": ["KEY_1"],
+        "sort_by_size": ["KEY_2"],
+        "sort_by_date": ["KEY_3"]
+    },
+    "network_operations": {
+        "connect_ftp": ["KEY_F"],
+        "connect_sftp": ["KEY_S"],
+        "mount_network": ["KEY_M"],
+        "refresh_network": ["KEY_R"]
+    }
+}

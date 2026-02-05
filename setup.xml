@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<setupxml>
+    <setup key="advancedfilemanager" title="Advanced File Manager Settings">
+        <!-- General Settings -->
+        <item level="0" text="Show hidden files" description="Show files and directories starting with dot (.)">config.plugins.advancedfilemanager.showhidden</item>
+        <item level="0" text="Use trash/recycle bin" description="Move deleted files to trash instead of permanent deletion">config.plugins.advancedfilemanager.use_trash</item>
+        <item level="0" text="Trash directory" description="Location of trash folder" conditional="config.plugins.advancedfilemanager.use_trash.value">config.plugins.advancedfilemanager.trash_path</item>
+        <item level="0" text="Confirm delete" description="Show confirmation dialog before deleting files">config.plugins.advancedfilemanager.confirm_delete</item>
+        <item level="0" text="Confirm overwrite" description="Show confirmation dialog before overwriting existing files">config.plugins.advancedfilemanager.confirm_overwrite</item>
+        
+        <!-- View Settings -->
+        <item level="1" text="Default view mode" description="Default file manager layout">config.plugins.advancedfilemanager.default_view</item>
+        <item level="1" text="Show file extensions" description="Display file extensions in file list">config.plugins.advancedfilemanager.show_extensions</item>
+        <item level="1" text="Sort directories first" description="Show directories before files in list">config.plugins.advancedfilemanager.dirs_first</item>
+        <item level="1" text="Default sort column" description="Default column to sort by">config.plugins.advancedfilemanager.sort_column</item>
+        
+        <!-- Network Settings -->
+        <item level="1" text="Enable network features" description="Enable FTP, SFTP, WebDAV support">config.plugins.advancedfilemanager.enable_network</item>
+        <item level="2" text="FTP timeout (seconds)" description="Connection timeout for FTP operations" conditional="config.plugins.advancedfilemanager.enable_network.value">config.plugins.advancedfilemanager.ftp_timeout</item>
+        <item level="2" text="SFTP timeout (seconds)" description="Connection timeout for SFTP operations" conditional="config.plugins.advancedfilemanager.enable_network.value">config.plugins.advancedfilemanager.sftp_timeout</item>
+        
+        <!-- Media Settings -->
+        <item level="1" text="Enable media player" description="Enable built-in media player features">config.plugins.advancedfilemanager.enable_media</item>
+        <item level="1" text="Auto-play next file" description="Automatically play next file in directory" conditional="config.plugins.advancedfilemanager.enable_media.value">config.plugins.advancedfilemanager.autoplay_next</item>
+        <item level="1" text="Auto-load subtitles" description="Automatically load matching subtitle files" conditional="config.plugins.advancedfilemanager.enable_media.value">config.plugins.advancedfilemanager.auto_load_subtitles</item>
+        
+        <!-- Cache Settings -->
+        <item level="2" text="Enable file cache" description="Cache file metadata for better performance">config.plugins.advancedfilemanager.enable_cache</item>
+        <item level="2" text="Cache expiration (minutes)" description="How long to keep cached data" conditional="config.plugins.advancedfilemanager.enable_cache.value">config.plugins.advancedfilemanager.cache_expire</item>
+        
+        <!-- Logging -->
+        <item level="2" text="Log level" description="Set logging verbosity">config.plugins.advancedfilemanager.log_level</item>
+        <item level="2" text="Log to file" description="Save logs to file">config.plugins.advancedfilemanager.log_to_file</item>
+    </setup>
+</setupxml>
