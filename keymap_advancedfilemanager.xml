@@ -1,0 +1,16 @@
+<keymap>
+    <AdvancedVideoPlayerActions>
+        <key id="KEY_CHANNELUP" mapto="subtitle_delay_plus" flags="m" />
+        <key id="KEY_CHANNELDOWN" mapto="subtitle_delay_minus" flags="m" />
+        <key id="KEY_HELP" mapto="subtitle_toggle" flags="m" />
+        <key id="KEY_SUBTITLE" mapto="subtitle_download" flags="m" />
+        <key id="KEY_TEXT" mapto="subtitle_download" flags="m" />
+        <key id="KEY_0" mapto="subtitle_sync_reset" flags="m" />
+        <key id="KEY_UP" mapto="next_file" flags="m" />
+        <key id="KEY_DOWN" mapto="prev_file" flags="m" />
+        <key id="KEY_P" mapto="show_playlist" flags="m" />
+        <key id="KEY_RED" mapto="delete_file" flags="m" />
+        <key id="KEY_INFO" mapto="file_info" flags="m" />
+        <key id="KEY_OK" mapto="toggle_osd" flags="m" />
+    </AdvancedVideoPlayerActions>
+</keymap>
